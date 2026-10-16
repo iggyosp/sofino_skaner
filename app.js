@@ -55,14 +55,15 @@ function beep() {
   gain.gain.setValueAtTime(0.15, audio.currentTime); gain.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + .12);
   osc.start(); osc.stop(audio.currentTime + .12);
 }
-function addScan(raw) {
+function addScan(raw) { return saveScan(raw); }
+function saveScan(raw, numericCode = null) {
   if (!storageReady) return;
   const employee = $('employee').value.trim(), route = $('route-input').value.trim();
   if (!employee || !route) { status('Укажите ФИО и местоположение.', true); return; }
   if (typeof raw !== 'string' || raw.length > 4000) { status('Слишком длинный код.', true); return; }
   const rawCode = raw;
-  let code = raw.trim();
-  if (window.SCANNER_CONFIG?.decodeMartinkevich) {
+  let code = numericCode === null ? raw.trim() : numericCode;
+  if (numericCode === null && window.SCANNER_CONFIG?.decodeMartinkevich) {
     const parts = code.split(':'); if (parts.length > 2) code = parts[2];
     code = decodeBarcodeToNumeric(code);
   }
@@ -140,6 +141,27 @@ $('stop').onclick = async () => {
 $('torch').onclick = async () => {
   try { await scanner.applyVideoConstraints({advanced:[{torch:!torch}]}); torch = !torch; }
   catch { status('Фонарик недоступен на этом устройстве.', true); }
+};
+// A 40-bit ID plus a zero suffix byte produces 8 Base64 characters.
+// The suffix cannot be recovered from the ID; this is a canonical NEW code.
+function encodeNumericToBarcode(value) {
+  const digits = value.trim();
+  if (!/^[0-9]{1,13}$/.test(digits)) throw Error('Введите целое неотрицательное число, только цифры.');
+  let number = BigInt(digits);
+  if (number > 1099511627775n) throw Error('Максимальный номер: 1099511627775.');
+  const bytes = new Uint8Array(6);
+  for (let i = 4; i >= 0; i--) { bytes[i] = Number(number % 256n); number /= 256n; }
+  return '*' + btoa(String.fromCharCode(...bytes));
+}
+$('manual-form').onsubmit = event => {
+  event.preventDefault();
+  try {
+    const input = $('numeric-code').value.trim();
+    const encoded = encodeNumericToBarcode(input);
+    $('generated-code').value = encoded;
+    // D keeps the entered number (including leading zeroes); E gets the new code.
+    saveScan(encoded, input);
+  } catch (error) { $('generated-code').value = ''; status(error.message, true); }
 };
 $('sync').onclick = sync;
 $('backup').onclick = () => {

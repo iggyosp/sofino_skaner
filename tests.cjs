@@ -46,9 +46,18 @@ const browser = vm.createContext({
  localStorage:{getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
  window:{addEventListener(){}}, navigator:{onLine:true}, crypto:require('node:crypto').webcrypto,
  setInterval(){},setTimeout,clearTimeout,AbortController,console,
- fetch:async()=>{throw Error('Network down');},atob,confirm:()=>true
+ fetch:async()=>{throw Error('Network down');},atob,btoa,confirm:()=>true
 });
 vm.runInContext(fs.readFileSync(__dirname+'/app.js','utf8'),browser);
+for (const value of ['0','1','255','256','43069882907','1099511627775']) {
+  const encoded = browser.encodeNumericToBarcode(value);
+  assert.equal(browser.decodeBarcodeToNumeric(encoded), value);
+}
+for (const value of ['-1','1.5','1e3','abc','1099511627776','']) {
+  assert.throws(() => browser.encodeNumericToBarcode(value));
+}
+assert.equal(browser.encodeNumericToBarcode('000123'), browser.encodeNumericToBarcode('123'));
+console.log('PASS: inverse round-trip, range limits and numeric validation');
 (async()=>{
  element('employee').value='Иван';element('route-input').value='12';
  browser.addScan('00123');
@@ -67,5 +76,13 @@ vm.runInContext(fs.readFileSync(__dirname+'/app.js','utf8'),browser);
  const decoded = JSON.parse(storage.get('sofino_scanner_v2')).records.at(-1);
  assert.equal(decoded.code,'16909060');
  assert.equal(decoded.rawCode,' prefix:meta:AAECAwQF ');
+ element('numeric-code').value = '0001234';
+ browser.window.SCANNER_CONFIG.decodeMartinkevich = false;
+ element('manual-form').onsubmit({preventDefault(){}});
+ const manual = JSON.parse(storage.get('sofino_scanner_v2')).records.at(-1);
+ assert.equal(manual.code, '0001234');
+ assert.equal(manual.rawCode, browser.encodeNumericToBarcode('1234'));
+ assert.equal(element('generated-code').value, manual.rawCode);
+ console.log('PASS: manual entry stores number in D and generated text in E without relying on decoder setting');
  console.log('PASS: client retains queue on network failure/missing acknowledgement, accepts confirmed IDs, preserves zeros and rejects local duplicates');
 })().catch(error=>{console.error(error);process.exitCode=1;});
