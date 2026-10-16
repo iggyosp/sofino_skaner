@@ -1,7 +1,7 @@
 'use strict';
 const $ = id => document.getElementById(id);
 const STORAGE = 'sofino_scanner_v2';
-let state = {records: [], employee: '', route: '', endpoint: ''};
+let state = {records: [], employee: '', route: ''};
 let storageReady = true, busy = false, scanner = null, audio = null, torch = false;
 let heldCode = '', heldAt = 0;
 function status(message, error = false) {
@@ -28,8 +28,7 @@ function persist() {
 }
 $('employee').value = state.employee;
 $('route-input').value = state.route;
-$('endpoint').value = state.endpoint;
-for (const [input, key] of [['employee','employee'], ['route-input','route'], ['endpoint','endpoint']]) {
+for (const [input, key] of [['employee','employee'], ['route-input','route']]) {
   $(input).addEventListener('change', () => { state[key] = $(input).value.trim(); persist(); render(); });
 }
 function render() {
@@ -59,9 +58,9 @@ function beep() {
 function addScan(raw) {
   if (!storageReady) return;
   const employee = $('employee').value.trim(), route = $('route-input').value.trim();
-  if (!employee || !route) { status('Укажите сотрудника и маршрут.', true); return; }
+  if (!employee || !route) { status('Укажите ФИО и местоположение.', true); return; }
   let code = raw.trim();
-  if ($('legacy').checked) {
+  if (window.SCANNER_CONFIG?.decodeMartinkevich) {
     const parts = code.split(':'); if (parts.length > 2) code = parts[2];
     code = decodeBarcodeToNumeric(code);
   }
@@ -70,7 +69,7 @@ function addScan(raw) {
   const now = Date.now(), same = heldCode === code && now - heldAt < 2000;
   heldCode = code; heldAt = now;
   if (same) return;
-  if (state.records.some(r => r.route === route && r.code === code)) { status('Дубликат в текущем маршруте: ' + code, true); return; }
+  if (state.records.some(r => r.route === route && r.code === code)) { status('Уже отсканирован здесь: ' + code, true); return; }
   const record = {eventId: crypto.randomUUID(), scannedAt: new Date().toISOString(), employee, route, code, sent: false};
   state.employee = employee; state.route = route; state.records.push(record);
   if (!persist()) { render(); return; }
@@ -79,9 +78,9 @@ function addScan(raw) {
 }
 async function sync() {
   if (busy || !storageReady || !state.records.some(r => !r.sent)) return;
-  const endpoint = $('endpoint').value.trim(), key = $('access-key').value;
-  if (!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(endpoint) || !key) {
-    status('Записи сохранены на телефоне. Для отправки заполните настройки подключения.', true); return;
+  const endpoint = (window.SCANNER_CONFIG?.endpoint || '').trim();
+  if (!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(endpoint)) {
+    status('Записи сохранены на телефоне. Подключение таблицы ещё не завершено.', true); return;
   }
   if (!navigator.onLine) { status('Нет сети. Записи ждут отправки на этом телефоне.', true); return; }
   busy = true; render();
@@ -92,12 +91,12 @@ async function sync() {
       let result;
       try {
         // text/plain avoids a preflight request. Never use no-cors: an opaque response is NOT an acknowledgement.
-        const response = await fetch(endpoint, {method:'POST', redirect:'follow', credentials:'omit', headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify({key, records:batch}), signal:controller.signal});
+        const response = await fetch(endpoint, {method:'POST', redirect:'follow', credentials:'omit', headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify({records:batch}), signal:controller.signal});
         if (!response.ok) throw Error('Сервер недоступен');
         result = await response.json();
       } finally { clearTimeout(timeout); }
       if (!result.ok) {
-        const errors = {UNAUTHORIZED:'Неверный ключ доступа', RUN_SETUP:'Выполните setup в Apps Script', BUSY:'Таблица занята — повторим позже', INVALID_RECORD:'Ошибка формата записи'};
+        const errors = {RUN_SETUP:'Выполните setup в Apps Script', BUSY:'Таблица занята — повторим позже', INVALID_RECORD:'Ошибка формата записи'};
         throw Error(errors[result.error] || 'Ошибка обработчика Google');
       }
       if (!Array.isArray(result.accepted) || !batch.every(r => result.accepted.includes(r.eventId))) throw Error('Нет подтверждения всех записей');
@@ -113,7 +112,7 @@ async function sync() {
 }
 $('start').onclick = async () => {
   if (!storageReady) return;
-  if (!$('employee').value.trim() || !$('route-input').value.trim()) { status('Сначала укажите сотрудника и маршрут.', true); return; }
+  if (!$('employee').value.trim() || !$('route-input').value.trim()) { status('Сначала укажите ФИО и местоположение.', true); return; }
   initAudio(); $('start').disabled = true;
   try {
     if (!window.Html5Qrcode) throw Error('Не загрузилась библиотека сканера. Проверьте интернет и обновите страницу.');
@@ -133,7 +132,6 @@ $('torch').onclick = async () => {
   try { await scanner.applyVideoConstraints({advanced:[{torch:!torch}]}); torch = !torch; }
   catch { status('Фонарик недоступен на этом устройстве.', true); }
 };
-$('manual-form').onsubmit = e => { e.preventDefault(); addScan($('manual').value); $('manual').value = ''; };
 $('sync').onclick = sync;
 $('backup').onclick = () => {
   const blob = new Blob([JSON.stringify({exportedAt:new Date().toISOString(), records:state.records, legacy:localStorage.getItem('scanner_routes')}, null, 2)], {type:'application/json'});

@@ -4,28 +4,22 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Софьино · Сканер</title>
 <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js" defer></script>
+<script src="config.js" defer></script>
 <script src="app.js" defer></script>
 <style>
 :root{color-scheme:dark;font-family:system-ui,sans-serif;background:#101413;color:#f0f6f2}*{box-sizing:border-box}body{max-width:640px;margin:0 auto;padding:24px 16px}h1{font-size:28px;margin:4px 0}p{color:#a4b6ab;line-height:1.5}label{display:block;font-size:14px;margin:16px 0 7px}input,button{font:inherit;border-radius:12px;padding:13px;width:100%}input{border:1px solid #43574c;background:#17201b;color:white}button{border:0;background:#69dfa0;color:#0b2818;font-weight:650;cursor:pointer}button:disabled{opacity:.45;cursor:default}.panel{background:#1a241e;border:1px solid #304338;border-radius:18px;padding:16px;margin:18px 0}.row{display:flex;gap:10px}.row>*{flex:1;min-width:0}.secondary{background:#2b3c31;color:#e1f6e9}#reader{overflow:hidden;border-radius:16px;margin-top:16px}#status-display{line-height:1.5;margin:16px 0;overflow-wrap:anywhere}#queue{font-size:14px}.history-item{padding:14px 0;border-bottom:1px solid #304338;overflow-wrap:anywhere}.history-item b,.history-item small{display:block}.history-item small{color:#adc1b5;margin-top:5px}summary{cursor:pointer;font-weight:600}small{line-height:1.5}input[type=checkbox]{width:auto}a{color:#8de8b7}footer{font-size:11px;color:#91a397;margin:30px 0}#manual-form{display:flex;gap:8px;margin-top:12px}#manual-form button{width:auto}button:focus-visible,input:focus-visible,summary:focus-visible{outline:3px solid #a9efc7;outline-offset:3px}
 </style>
 </head>
 <body>
-<header><small>СКЛАД · СОФЬИНО</small><h1>Сканер маршрутов</h1><p>Сканируйте коды. Результаты отправляются в общую таблицу после подтверждения соединения.</p></header>
-<section class="panel" aria-label="Сотрудник и маршрут">
-<label for="employee">Сотрудник</label><input id="employee" maxlength="100" placeholder="Имя и фамилия" autocomplete="name">
-<label for="route-input">Зона / маршрут</label><input id="route-input" maxlength="100" placeholder="Например: Маршрут 12">
+<header><small>СКЛАД · СОФЬИНО</small><h1>Сканер</h1><p>Укажите ФИО и местоположение, затем включите камеру.</p></header>
+<section class="panel" aria-label="ФИО и местоположение">
+<label for="employee">ФИО</label><input id="employee" maxlength="100" placeholder="Фамилия, имя, отчество" autocomplete="name">
+<label for="route-input">Текущее местоположение</label><input id="route-input" maxlength="100" placeholder="Например: склад 2, зона приёмки">
 </section>
 <div class="row"><button id="start">Включить камеру</button><button id="stop" class="secondary" disabled>Остановить</button></div>
 <div id="reader"></div><button id="torch" class="secondary" hidden>Переключить фонарик</button>
 <div id="status-display" role="status" aria-live="polite">Готов к работе</div>
-<div class="panel"><div id="queue"></div><button id="sync" style="margin-top:12px">Отправить сейчас</button><p><small>При сбое записи остаются на телефоне. Повторная отправка выполняется каждые 30 секунд, пока страница открыта. Не очищайте данные браузера до отправки.</small></p></div>
-<details class="panel"><summary>Ввести код вручную</summary><form id="manual-form"><input id="manual" aria-label="Код" maxlength="500" required><button type="submit">Добавить</button></form></details>
-<details class="panel" open><summary>Настройки подключения</summary>
-<label for="endpoint">Адрес обработчика Google (оканчивается на /exec)</label><input type="url" id="endpoint" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off">
-<label for="access-key">Ключ доступа сотрудников</label><input type="password" id="access-key" autocomplete="off" placeholder="Получите у руководителя">
-<p><small>Ключ вводится при открытии страницы и не сохраняется в её коде или локальном хранилище. Настройки адреса сохраняются на этом телефоне.</small></p>
-<label><input type="checkbox" id="legacy"> Преобразование кодов по алгоритму Мартинкевича</label><p><small>Включайте только для проверенных этикеток этого формата. По умолчанию содержимое кода сохраняется без преобразования.</small></p>
-</details>
-<details class="panel"><summary>История текущего маршрута</summary><div id="history-box"></div><p>Показаны последние 100 записей маршрута на этом телефоне.</p><div class="row"><button id="backup" class="secondary">Скачать резервную копию</button><button id="clear" class="secondary">Очистить отправленные</button></div></details>
+<div class="panel"><div id="queue"></div><p><small>При сбое записи остаются на телефоне. Повторная отправка выполняется каждые 30 секунд, пока страница открыта. Не очищайте данные браузера до отправки.</small></p></div>
+<details class="panel"><summary>История сканирования</summary><button id="sync">Повторить отправку</button><div id="history-box"></div><p>Показаны последние 100 записей этого местоположения на этом телефоне.</p><div class="row"><button id="backup" class="secondary">Скачать резервную копию</button><button id="clear" class="secondary">Очистить отправленные</button></div></details>
 <footer>Исходный сканер: © 2026 D. Martinkevich for Sofrino KBT. Адаптация для общей Google Таблицы.</footer>
 </body></html>

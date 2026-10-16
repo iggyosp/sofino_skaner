@@ -1,4 +1,4 @@
-// Google Apps Script. Секрет задаётся в свойствах скрипта, НЕ в этом файле.
+// Google Apps Script: приём сканирований без пароля по запросу владельца.
 function spreadsheetId_() {
   const id = PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID');
   if (!id) throw new Error('Добавьте SPREADSHEET_ID в свойства скрипта');
@@ -15,8 +15,9 @@ function sheet_() {
 
 // Выполнить один раз из редактора. Не очищает существующие строки.
 function setup() {
-  const key = PropertiesService.getScriptProperties().getProperty('STAFF_KEY');
-  if (!key || key.length < 20) throw new Error('Добавьте STAFF_KEY длиной не менее 20 символов в свойства скрипта');
+  const active = SpreadsheetApp.getActiveSpreadsheet();
+  if (!active) throw new Error('Откройте Apps Script через меню Расширения вашей таблицы');
+  PropertiesService.getScriptProperties().setProperty('SPREADSHEET_ID', active.getId());
   const sheet = sheet_();
   const existing = sheet.getRange(1, 1, 1, 5).getValues()[0];
   if (existing.some((value, i) => value && value !== HEADERS[i])) {
@@ -51,8 +52,6 @@ function doPost(e) {
     const raw = e && e.postData && e.postData.contents;
     if (!raw || raw.length > 100000) return json_({ok: false, error: 'INVALID_REQUEST'});
     const body = JSON.parse(raw);
-    const key = PropertiesService.getScriptProperties().getProperty('STAFF_KEY');
-    if (!key || key.length < 20 || body.key !== key) return json_({ok: false, error: 'UNAUTHORIZED'});
     if (!Array.isArray(body.records) || body.records.length < 1 || body.records.length > 50) return json_({ok: false, error: 'INVALID_REQUEST'});
     // Validate entire batch before any mutation.
     const records = body.records.map(r => {
