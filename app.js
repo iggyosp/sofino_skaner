@@ -59,6 +59,8 @@ function addScan(raw) {
   if (!storageReady) return;
   const employee = $('employee').value.trim(), route = $('route-input').value.trim();
   if (!employee || !route) { status('Укажите ФИО и местоположение.', true); return; }
+  if (typeof raw !== 'string' || raw.length > 4000) { status('Слишком длинный код.', true); return; }
+  const rawCode = raw;
   let code = raw.trim();
   if (window.SCANNER_CONFIG?.decodeMartinkevich) {
     const parts = code.split(':'); if (parts.length > 2) code = parts[2];
@@ -70,7 +72,7 @@ function addScan(raw) {
   heldCode = code; heldAt = now;
   if (same) return;
   if (state.records.some(r => r.route === route && r.code === code)) { status('Уже отсканирован здесь: ' + code, true); return; }
-  const record = {eventId: crypto.randomUUID(), scannedAt: new Date().toISOString(), employee, route, code, sent: false};
+  const record = {eventId: crypto.randomUUID(), scannedAt: new Date().toISOString(), employee, route, code, rawCode, sent: false};
   state.employee = employee; state.route = route; state.records.push(record);
   if (!persist()) { render(); return; }
   beep(); if (navigator.vibrate) navigator.vibrate(50);
@@ -85,8 +87,15 @@ async function sync() {
   if (!navigator.onLine) { status('Нет сети. Записи ждут отправки на этом телефоне.', true); return; }
   busy = true; render();
   try {
+    const probeController = new AbortController();
+    const probeTimeout = setTimeout(() => probeController.abort(), 20000);
+    try {
+      const response = await fetch(endpoint, {credentials:'omit', signal:probeController.signal});
+      const service = await response.json();
+      if (!response.ok || service.version !== 2) throw Error('Нужно обновить обработчик Google для сохранения исходного кода');
+    } finally { clearTimeout(probeTimeout); }
     while (state.records.some(r => !r.sent)) {
-      const batch = state.records.filter(r => !r.sent).slice(0, 50);
+      const batch = state.records.filter(r => !r.sent).slice(0, 10);
       const controller = new AbortController(), timeout = setTimeout(() => controller.abort(), 45000);
       let result;
       try {

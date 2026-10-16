@@ -5,7 +5,7 @@ function spreadsheetId_() {
   return id;
 }
 const SHEET_NAME = 'Сканер';
-const HEADERS = ['Дата и время', 'Сотрудник', 'Зона / маршрут', 'Код', 'ID записи'];
+const HEADERS = ['Дата и время', 'Сотрудник', 'Зона / маршрут', 'Код', 'Исходный код', 'ID записи'];
 
 function sheet_() {
   const sheet = SpreadsheetApp.openById(spreadsheetId_()).getSheetByName(SHEET_NAME);
@@ -18,16 +18,25 @@ function setup() {
   const active = SpreadsheetApp.getActiveSpreadsheet();
   if (!active) throw new Error('Откройте Apps Script через меню Расширения вашей таблицы');
   PropertiesService.getScriptProperties().setProperty('SPREADSHEET_ID', active.getId());
-  const sheet = sheet_();
-  const existing = sheet.getRange(1, 1, 1, 5).getValues()[0];
-  if (existing.some((value, i) => value && value !== HEADERS[i])) {
-    throw new Error('Заголовки отличаются. Сначала проверьте столбцы A:E');
-  }
-  sheet.getRange(1, 1, 1, 5).setValues([HEADERS]);
-  sheet.setFrozenRows(1);
-  sheet.getRange('D:E').setNumberFormat('@');
-  sheet.getRange('A:A').setNumberFormat('dd.MM.yyyy HH:mm:ss');
-  SpreadsheetApp.openById(spreadsheetId_()).setSpreadsheetTimeZone('Europe/Moscow');
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const sheet = sheet_();
+    let existing = sheet.getRange(1, 1, 1, 6).getValues()[0];
+    if (existing.slice(0, 4).some((v, i) => v && v !== HEADERS[i])) throw new Error('Проверьте заголовки A:D');
+    if (existing[4] === 'ID записи') {
+      // Atomic column insertion moves all old IDs and any later columns safely right.
+      sheet.insertColumnBefore(5);
+      existing = sheet.getRange(1, 1, 1, 6).getValues()[0];
+    }
+    if (existing.some((v, i) => v && v !== HEADERS[i])) throw new Error('Проверьте заголовки A:F');
+    sheet.getRange(1, 1, 1, 6).setValues([HEADERS]);
+    sheet.setFrozenRows(1);
+    sheet.getRange('D:F').setNumberFormat('@');
+    sheet.getRange('A:A').setNumberFormat('dd.MM.yyyy HH:mm:ss');
+    SpreadsheetApp.openById(spreadsheetId_()).setSpreadsheetTimeZone('Europe/Moscow');
+    SpreadsheetApp.flush();
+  } finally { lock.releaseLock(); }
 }
 
 function json_(value) {
@@ -35,7 +44,7 @@ function json_(value) {
 }
 
 function doGet() {
-  return json_({ok: true, service: 'sofino-scanner', version: 1});
+  return json_({ok: true, service: 'sofino-scanner', version: 2});
 }
 
 function text_(value, max) {
@@ -50,7 +59,7 @@ function doPost(e) {
   let lock;
   try {
     const raw = e && e.postData && e.postData.contents;
-    if (!raw || raw.length > 100000) return json_({ok: false, error: 'INVALID_REQUEST'});
+    if (!raw || raw.length > 300000) return json_({ok: false, error: 'INVALID_REQUEST'});
     const body = JSON.parse(raw);
     if (!Array.isArray(body.records) || body.records.length < 1 || body.records.length > 50) return json_({ok: false, error: 'INVALID_REQUEST'});
     // Validate entire batch before any mutation.
@@ -59,26 +68,29 @@ function doPost(e) {
       if (!/^[a-zA-Z0-9-]{16,80}$/.test(id)) throw new Error('INVALID_RECORD');
       const date = new Date(r.scannedAt);
       if (typeof r.scannedAt !== 'string' || !Number.isFinite(date.getTime())) throw new Error('INVALID_RECORD');
-      return {eventId: id, date, employee: text_(r.employee, 100), route: text_(r.route, 100), code: text_(r.code, 500)};
+      // Old queued events did not retain the original text: leave E empty.
+      const rawCode = r.rawCode === undefined ? '' : r.rawCode;
+      if (typeof rawCode !== 'string' || rawCode.length > 4000) throw new Error('INVALID_RECORD');
+      return {rawCode, eventId: id, date, employee: text_(r.employee, 100), route: text_(r.route, 100), code: text_(r.code, 500)};
     });
     lock = LockService.getScriptLock();
     if (!lock.tryLock(20000)) return json_({ok: false, error: 'BUSY'});
     const sheet = sheet_();
-    const headers = sheet.getRange(1, 1, 1, 5).getValues()[0];
+    const headers = sheet.getRange(1, 1, 1, 6).getValues()[0];
     if (HEADERS.some((h, i) => headers[i] !== h)) return json_({ok: false, error: 'RUN_SETUP'});
     const lastRow = sheet.getLastRow();
-    const known = new Set(lastRow > 1 ? sheet.getRange(2, 5, lastRow - 1, 1).getValues().map(row => String(row[0])) : []);
+    const known = new Set(lastRow > 1 ? sheet.getRange(2, 6, lastRow - 1, 1).getValues().map(row => String(row[0])) : []);
     const rows = [];
     for (const record of records) {
       if (known.has(record.eventId)) continue;
-      rows.push([record.date, cellText_(record.employee), cellText_(record.route), cellText_(record.code), record.eventId]);
+      rows.push([record.date, cellText_(record.employee), cellText_(record.route), cellText_(record.code), cellText_(record.rawCode), record.eventId]);
       known.add(record.eventId);
     }
     if (rows.length) {
       if (lastRow + rows.length > sheet.getMaxRows()) sheet.insertRowsAfter(sheet.getMaxRows(), lastRow + rows.length - sheet.getMaxRows());
-      sheet.getRange(lastRow + 1, 4, rows.length, 2).setNumberFormat('@');
+      sheet.getRange(lastRow + 1, 4, rows.length, 3).setNumberFormat('@');
       // The idempotency ID is stored in the SAME write as the scan.
-      sheet.getRange(lastRow + 1, 1, rows.length, 5).setValues(rows);
+      sheet.getRange(lastRow + 1, 1, rows.length, 6).setValues(rows);
       SpreadsheetApp.flush();
     }
     return json_({ok: true, accepted: records.map(r => r.eventId), inserted: rows.length});
