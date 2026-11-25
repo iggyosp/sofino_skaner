@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="ru"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Фиксация дефекта</title><link rel="stylesheet" href="style.css">
+<main><header><strong>Приёмка</strong><button id="change" hidden>Сменить ID</button></header>
+<section id="login"><h1>Начало смены</h1><form id="enter"><label>ID сотрудника<input id="employee" required maxlength="32" pattern="[0-9A-Za-zА-Яа-яЁё_-]{1,32}" autocomplete="off"></label>
+<label id="keyLabel">Ключ устройства<input type="password" id="key" autocomplete="off"></label><button>Начать работу</button></form></section>
+<section id="work" hidden><small id="step"></small><h1 id="title"></h1>
+<video id="video" playsinline muted autoplay></video><div id="review" hidden><div id="thumbs"></div><label>Штрихкод<input id="barcode" inputmode="numeric" maxlength="64"></label><label id="typeLabel">Тип дефекта<select id="kind"></select></label></div>
+<button id="primary"></button><button class="minor" id="back">Назад</button></section><p role="status" id="status"></p></main>
+<script src="config.js"></script><script defer src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js"></script><script defer src="app.js"></script></html>
